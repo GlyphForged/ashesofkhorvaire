@@ -143,3 +143,18 @@ async fn routes_return_pages_redirects_and_friendly_404() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn health_route_checks_the_database() {
+    let (_dir, pool) = test_pool().await;
+    let response = router(AppState { pool })
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}

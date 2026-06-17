@@ -1,0 +1,14 @@
+# Replace the site address and password hash before installing this file.
+# Generate the hash on the Orange Pi with:
+#   caddy hash-password
+wiki.example.com {
+	encode zstd gzip
+
+	basic_auth {
+		dm REPLACE_WITH_CADDY_HASH
+	}
+
+	reverse_proxy 127.0.0.1:3000 {
+		health_uri /healthz
+	}
+}

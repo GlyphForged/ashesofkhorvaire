@@ -46,6 +46,8 @@ Integration tests use isolated temporary SQLite databases and cover seeding, FTS
 
 Stop the app and copy `ashes.db` (plus any `-wal`/`-shm` files if present), or use SQLite's online backup command while it is running. For a server deployment, place the app behind a TLS reverse proxy, set an absolute database URL, and use a service manager.
 
+For an Orange Pi running DietPi, follow the complete native ARM build, systemd, Caddy, and backup guide in [`docs/deploy-dietpi.md`](docs/deploy-dietpi.md). Deployment assets live in `deploy/`.
+
 > **Security warning:** `GM SECRET` is a prominent label, not access control. This milestone trusts all locally-authored HTML and has no authentication. Keep the default localhost bind. Do not expose the app publicly until authentication, authorization, CSRF protection, and an HTML sanitization policy are added.
 
 ## Project map

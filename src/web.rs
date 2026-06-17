@@ -18,6 +18,7 @@ use tower_http::{services::ServeDir, trace::TraceLayer};
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/", get(index))
+        .route("/healthz", get(health))
         .route("/pages", get(pages))
         .route("/pages/new", get(new_page).post(create_page))
         .route("/pages/slug-preview", get(slug_preview))
@@ -37,6 +38,13 @@ pub fn router(state: AppState) -> Router {
         .nest_service("/static", ServeDir::new("static"))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+}
+
+async fn health(State(s): State<AppState>) -> Result<StatusCode, AppError> {
+    sqlx::query_scalar::<_, i64>("SELECT 1")
+        .fetch_one(&s.pool)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn html<T: Template>(template: T) -> Result<Html<String>, AppError> {
