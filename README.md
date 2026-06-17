@@ -38,9 +38,14 @@ Every save creates an immutable revision. Archiving removes a page from normal l
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
+npm ci
+npx playwright install chromium
+npm run test:e2e
 ```
 
-Integration tests use isolated temporary SQLite databases and cover seeding, FTS search, CRUD revisions, archives, redirects, wiki links, and HTTP responses.
+Integration tests use isolated temporary SQLite databases and cover seeding, FTS search, CRUD revisions, archives, redirects, wiki links, and HTTP responses. Playwright starts the application on port 3100 with its own ignored database and verifies live search, WYSIWYG/raw synchronization, slug previews, and lazy revision loading in Chromium.
+
+GitHub Actions runs formatting, Clippy, Rust tests, and Playwright on every pull request and every push to `trunk`. Failed browser runs retain traces and screenshots as a short-lived workflow artifact.
 
 ## Backup and deployment
 
