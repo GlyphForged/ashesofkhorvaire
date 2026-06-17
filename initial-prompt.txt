@@ -1,0 +1,198 @@
+You are building a locally hosted campaign wiki for a D&D 5e Eberron campaign called **Ashes of Khorvaire**.
+
+The campaign is a post-apocalyptic Eberron campaign inspired structurally and thematically by the original Wasteland. The setting takes place after a continent-wide magical catastrophe, the **Second Mourning**, which has left Khorvaire fractured into settlements, ruins, magical fallout zones, broken dragonmarked enclaves, rogue warforged facilities, and dangerous old-world infrastructure.
+
+The long-term goal is to create a self-hosted wiki I can use while running the campaign. It should be useful at the table, editable during prep, and eventually deployable to a DigitalOcean droplet under a subdomain of my existing website. For now, target local hosting first.
+
+Tech requirements:
+
+* Backend: Rust
+* Web server framework: choose a simple, maintainable Rust web framework, preferably Axum unless there is a strong reason not to
+* Templates: server-rendered HTML using a Rust-friendly templating engine such as Askama, Tera, or similar
+* Database: SQLite for local development
+* Dynamic behavior: minimal JavaScript
+* Use HTMX for lightweight interactions where useful
+* Styling: simple CSS, no heavy frontend framework
+* Editing:
+
+  * Wiki pages must support WYSIWYG editing
+  * Users must also be able to edit raw HTML directly
+  * Start with a practical editor approach rather than inventing one from scratch
+  * Keep the editor modular so it can be swapped later
+* Content storage:
+
+  * Store wiki pages in SQLite
+  * Store title, slug, HTML body, plaintext/search text if useful, created timestamp, updated timestamp
+  * Track page type/category where useful
+* Search:
+
+  * Include basic search over page titles and body text
+  * SQLite FTS is preferred if practical
+* Versioning:
+
+  * Add a simple page revision history system
+  * Each save should create a revision
+  * Revisions should store page ID, body HTML, timestamp, and edit summary if provided
+* Deployment:
+
+  * Make local dev easy first
+  * Keep configuration environment-based so deployment to a DigitalOcean droplet later is straightforward
+  * Include a basic README with local setup and run instructions
+
+Important product direction:
+
+This is not a generic corporate wiki. It is a DM-facing campaign wiki. The information architecture should reflect a tabletop campaign.
+
+Build the project around the following content types:
+
+1. Campaign Overview
+2. Settlements
+3. Locations
+4. Factions
+5. NPCs
+6. Quests / Adventures
+7. Timeline
+8. Items / Artifacts
+9. Monsters / Encounters
+10. Session Notes
+11. GM Secrets
+12. Player-Facing Handouts
+
+The wiki should support hidden/private GM sections. For now, do this simply with a boolean field like `is_secret` or `visibility`, not a full auth system unless absolutely necessary. Assume local-only use initially. Design so auth can be added later.
+
+Initial campaign content to seed into the wiki:
+
+Campaign title:
+**Ashes of Khorvaire**
+
+Core premise:
+The Last War did not end with the Mourning. It escalated. Cyre’s destruction was only the first uncontrolled release of apocalyptic magic. In the years after, desperate nations, rogue Cannith cells, the Twelve, military artificers, and hidden dragonmarked interests attempted to replicate, weaponize, or prevent the Mourning. They failed. The result was the Second Mourning, a continent-wide magical catastrophe that shattered Khorvaire.
+
+The player characters are members of the **Ashguard**, a frontier peacekeeping order descended from the King’s Citadel, Thronehold diplomats, Cyran refugees, and surviving military units. They operate from **Fort Dawn**, a fortified settlement built around a damaged lightning rail depot, an old Brelish bunker, and a House Cannith repair yard.
+
+Central antagonist:
+**The Sovereign Engine**, an arcane command intelligence created near the end of the Last War. It was built from Cannith command matrices, warforged creation forge protocols, Zilargo cryptography, quori cognitive architecture, docent networks, and battlefield logistics systems. Its original purpose was to prevent another apocalypse. It concluded that mortal civilization itself was the unstable variable.
+
+Major factions:
+
+* The Ashguard
+* House Cannith bunker-enclaves
+* House Orien rail-priests
+* House Jorasco medical enclaves
+* House Kundarak vault-holders
+* House Sivis compromised message network
+* The Lord of Blades
+* The Children of the Becoming
+* The Red Jackals
+* The Glassborn
+
+Major locations:
+
+* Fort Dawn
+* The Glass Barrens
+* Redwater
+* Junker’s Crown
+* The Monastery of the Final Flame
+* The Titan Graveyard
+* Metrol Below
+* The Black Rail
+* The Iron Basilica
+
+Campaign tier structure:
+
+* Tier I, levels 1/3 to 5: local settlements, raiders, survival, first signs of machine intelligence
+* Tier II, levels 6 to 10: regional threats, broken dragonmarked enclaves, hidden war-tech
+* Tier III, levels 11 to 16: discovery of the Sovereign Engine’s origin and continent-scale plan
+* Tier IV, levels 17 to 20: assault on the Engine’s network and the Iron Basilica
+
+Core modules:
+
+1. Fort Dawn and the missing Ashguard patrol
+2. Redwater and the poisoned purifier
+3. Red Jackal raiders and the command implant
+4. Junker’s Crown and the decoder
+5. Monastery of the Final Flame and the anti-command relic
+6. Titan Graveyard and stolen war machines
+7. Metrol Below and the Engine’s origin
+8. Black Rail and the restored network
+9. Lord of Blades negotiation
+10. Iron Basilica final assault
+
+Start by creating a working vertical slice.
+
+Minimum first milestone:
+
+1. Initialize a Rust web app.
+2. Add SQLite persistence.
+3. Add migrations.
+4. Add routes:
+
+   * `/`
+   * `/pages`
+   * `/pages/new`
+   * `/pages/:slug`
+   * `/pages/:slug/edit`
+   * `/search`
+5. Add page create/edit/view/delete behavior.
+6. Add WYSIWYG editing and raw HTML editing mode.
+7. Add HTMX where it genuinely improves the experience, such as:
+
+   * live search results
+   * inline title/slug preview
+   * save status
+   * revision list loading
+8. Seed the database with the campaign overview, core factions, and major locations.
+9. Add simple navigation grouped by content type.
+10. Add README instructions.
+
+Implementation guidance:
+
+* Prefer clarity over cleverness.
+* Do not build a SPA.
+* Do not introduce React, Vue, Svelte, Angular, or a frontend build pipeline unless absolutely necessary.
+* Keep JavaScript minimal and isolated.
+* Use semantic HTML.
+* Use plain CSS.
+* Use Rust error handling cleanly.
+* Keep modules organized.
+* Add comments only where they explain non-obvious decisions.
+* Use environment variables for database path and server bind address.
+* Make the app runnable with `cargo run`.
+* Include any setup steps in the README.
+
+Suggested project structure, adjust if needed:
+
+```
+ashes-wiki/
+  Cargo.toml
+  README.md
+  .env.example
+  migrations/
+  src/
+    main.rs
+    config.rs
+    db.rs
+    errors.rs
+    models/
+    routes/
+    templates/
+    services/
+  templates/
+    base.html
+    index.html
+    pages/
+      list.html
+      view.html
+      edit.html
+      new.html
+    search.html
+  static/
+    css/
+      main.css
+    js/
+      editor.js
+```
+
+Before writing a large amount of code, first inspect the workspace, determine whether a Rust project already exists, and summarize the intended implementation plan. Then proceed to create the vertical slice.
+
+When making decisions, optimize for a DM who wants to quickly search, edit, and cross-reference campaign material during prep and at the table.

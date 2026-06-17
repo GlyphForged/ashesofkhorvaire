@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block title %}Command Desk · Ashes of Khorvaire{% endblock %}{% block content %}
+<header class="page-header"><div><p class="eyebrow">Ashguard command archive</p><h1>Fort Dawn Command Desk</h1><p class="lede">Field intelligence, old-world dossiers, and the fragile map of what remains.</p></div><a class="button primary" href="/pages/new">New dossier</a></header>
+<section class="search-hero"><form action="/search"><label for="desk-search">What do you need at the table?</label><div class="search-row"><input autofocus id="desk-search" name="q" type="search" placeholder="Search people, places, threats…"><button>Search</button></div></form></section>
+<section><div class="section-heading"><h2>Active dossiers</h2><a href="/pages">View all</a></div><div class="card-grid">
+{% for page in pages %}<a class="card" href="/pages/{{ page.slug }}"><span class="type">{{ page.type_label() }}</span><strong>{{ page.title }}</strong>{% if page.is_gm_secret %}<span class="secret">GM SECRET</span>{% endif %}</a>{% endfor %}
+</div></section>{% endblock %}

@@ -1,0 +1,1 @@
+{% extends "base.html" %}{% block title %}History: {{ page.title }}{% endblock %}{% block content %}<header class="page-header"><div><p class="eyebrow">Revision ledger</p><h1>{{ page.title }}</h1></div><a class="button" href="/pages/{{ page.slug }}">Back to dossier</a></header>{% include "partials/revisions.html" %}{% endblock %}
