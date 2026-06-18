@@ -26,6 +26,7 @@ pub fn router(state: AppState) -> Router {
         .route("/pages/{slug}/edit", get(edit_page).post(save_page))
         .route("/pages/{slug}/archive", post(archive_page))
         .route("/pages/{slug}/restore", post(restore_page))
+        .route("/pages/{slug}/activate-session", post(activate_session))
         .route("/pages/{slug}/revisions", get(revision_list))
         .route("/pages/{slug}/revisions/{id}", get(view_revision))
         .route(
@@ -33,6 +34,8 @@ pub fn router(state: AppState) -> Router {
             post(restore_revision),
         )
         .route("/archive", get(archive_list))
+        .route("/links", get(link_health))
+        .route("/sessions/active/notes", post(add_quick_note))
         .route("/search", get(search))
         .route("/search/live", get(search_live))
         .nest_service("/static", ServeDir::new("static"))
@@ -60,6 +63,13 @@ fn is_hx(headers: &HeaderMap) -> bool {
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate {
+    active: Option<Page>,
+    active_rendered: String,
+    linked_groups: Vec<PageGroup>,
+    session_pages: Vec<Page>,
+}
+struct PageGroup {
+    label: &'static str,
     pages: Vec<Page>,
 }
 #[derive(Template)]
@@ -74,6 +84,9 @@ struct ListTemplate {
 struct ViewTemplate {
     page: Page,
     rendered: String,
+    backlinks: Vec<Page>,
+    is_session: bool,
+    is_active_session: bool,
 }
 #[derive(Template)]
 #[template(path = "pages/form.html")]
@@ -84,6 +97,7 @@ struct FormTemplate {
     form: PageForm,
     types: &'static [(&'static str, &'static str)],
     is_edit: bool,
+    draft_key: String,
 }
 #[derive(Template)]
 #[template(path = "pages/revisions.html")]
@@ -116,11 +130,50 @@ struct SearchResultsTemplate {
     query: String,
     pages: Vec<Page>,
 }
+#[derive(Template)]
+#[template(path = "links.html")]
+struct LinksTemplate {
+    broken: Vec<render::BrokenLink>,
+}
 
 async fn index(State(s): State<AppState>) -> Result<Html<String>, AppError> {
+    let active = db::active_session(&s.pool).await?;
+    let (active_rendered, linked_groups) = if let Some(session) = &active {
+        let rendered = render::wiki_html(&s.pool, &session.body_html).await?;
+        let linked = render::linked_pages(&s.pool, &session.body_html).await?;
+        (rendered, group_pages(linked))
+    } else {
+        (String::new(), Vec::new())
+    };
+    let session_pages = db::list_pages(&s.pool)
+        .await?
+        .into_iter()
+        .filter(|p| p.content_type == "session_notes")
+        .collect();
     html(IndexTemplate {
-        pages: db::list_pages(&s.pool).await?,
+        active,
+        active_rendered,
+        linked_groups,
+        session_pages,
     })
+}
+
+fn group_pages(pages: Vec<Page>) -> Vec<PageGroup> {
+    CONTENT_TYPES
+        .iter()
+        .filter_map(|(key, label)| {
+            let mut matching: Vec<Page> = pages
+                .iter()
+                .filter(|p| p.content_type == *key)
+                .cloned()
+                .collect();
+            matching.sort_by_key(|a| a.title.to_lowercase());
+            (!matching.is_empty()).then_some(PageGroup {
+                label,
+                pages: matching,
+            })
+        })
+        .collect()
 }
 #[derive(Deserialize, Default)]
 struct ListQuery {
@@ -149,19 +202,27 @@ async fn pages(
 struct NewQuery {
     #[serde(default)]
     title: String,
+    #[serde(rename = "type", default)]
+    kind: String,
 }
 async fn new_page(Query(q): Query<NewQuery>) -> Result<Html<String>, AppError> {
+    let content_type = if crate::models::valid_type(&q.kind) {
+        q.kind
+    } else {
+        "campaign_overview".into()
+    };
     html(FormTemplate {
         heading: "Open a new dossier".into(),
         action: "/pages/new".into(),
         archive_action: String::new(),
         form: PageForm {
             title: q.title,
-            content_type: "campaign_overview".into(),
+            content_type,
             ..Default::default()
         },
         types: &CONTENT_TYPES,
         is_edit: false,
+        draft_key: "page:new".into(),
     })
 }
 async fn create_page(
@@ -169,7 +230,7 @@ async fn create_page(
     Form(form): Form<PageForm>,
 ) -> Result<Response, AppError> {
     let p = db::create_page(&s.pool, &form).await?;
-    Ok(see_other(format!("/pages/{}", p.slug)))
+    Ok(see_other(format!("/pages/{}?saved=1", p.slug)))
 }
 
 async fn view_page(
@@ -178,7 +239,18 @@ async fn view_page(
 ) -> Result<Response, AppError> {
     if let Some(page) = db::get_page(&s.pool, &slug).await? {
         let rendered = render::wiki_html(&s.pool, &page.body_html).await?;
-        return Ok(html(ViewTemplate { page, rendered })?.into_response());
+        let backlinks = render::backlinks(&s.pool, &page).await?;
+        let active_id = db::active_session(&s.pool).await?.map(|p| p.id);
+        let is_session = page.content_type == "session_notes";
+        let is_active_session = active_id == Some(page.id);
+        return Ok(html(ViewTemplate {
+            page,
+            rendered,
+            backlinks,
+            is_session,
+            is_active_session,
+        })?
+        .into_response());
     }
     if let Some(current) = db::redirect_for(&s.pool, &slug).await? {
         return Ok(Redirect::permanent(&format!("/pages/{current}")).into_response());
@@ -207,6 +279,7 @@ async fn edit_page(
         form,
         types: &CONTENT_TYPES,
         is_edit: true,
+        draft_key: format!("page:edit:{}", p.id),
     })
 }
 async fn save_page(
@@ -247,6 +320,36 @@ async fn archive_list(State(s): State<AppState>) -> Result<Html<String>, AppErro
         title: "Archive".into(),
         pages: db::list_archived(&s.pool).await?,
         archived: true,
+    })
+}
+
+async fn activate_session(
+    State(s): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Response, AppError> {
+    let page = db::get_page(&s.pool, &slug)
+        .await?
+        .ok_or(AppError::NotFound)?;
+    db::set_active_session(&s.pool, page.id).await?;
+    Ok(see_other("/?session=active".into()))
+}
+
+#[derive(Deserialize)]
+struct QuickNoteForm {
+    note: String,
+}
+
+async fn add_quick_note(
+    State(s): State<AppState>,
+    Form(form): Form<QuickNoteForm>,
+) -> Result<Response, AppError> {
+    db::append_session_note(&s.pool, &form.note).await?;
+    Ok(see_other("/?note=added".into()))
+}
+
+async fn link_health(State(s): State<AppState>) -> Result<Html<String>, AppError> {
+    html(LinksTemplate {
+        broken: render::broken_links(&s.pool).await?,
     })
 }
 

@@ -163,6 +163,14 @@ pub async fn update_page(pool: &SqlitePool, id: i64, form: &PageForm) -> Result<
     sqlx::query("UPDATE pages SET title=?,slug=?,body_html=?,search_text=?,content_type=?,is_gm_secret=?,updated_at=? WHERE id=?")
         .bind(form.title.trim()).bind(&slug).bind(&form.body_html).bind(search_text(&form.body_html)).bind(&form.content_type)
         .bind(form.is_gm_secret).bind(timestamp).bind(id).execute(&mut *tx).await.map_err(map_constraint)?;
+    if form.content_type != "session_notes" {
+        sqlx::query(
+            "UPDATE wiki_settings SET active_session_page_id=NULL WHERE id=1 AND active_session_page_id=?",
+        )
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    }
     let summary = if form.edit_summary.trim().is_empty() {
         "Updated page"
     } else {
@@ -216,18 +224,86 @@ pub async fn list_archived(pool: &SqlitePool) -> Result<Vec<Page>, AppError> {
     .await?)
 }
 pub async fn archive(pool: &SqlitePool, id: i64) -> Result<(), AppError> {
+    let mut tx = pool.begin().await?;
     let result = sqlx::query(
         "UPDATE pages SET archived_at=?,updated_at=? WHERE id=? AND archived_at IS NULL",
     )
     .bind(now())
     .bind(now())
     .bind(id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);
     }
+    sqlx::query(
+        "UPDATE wiki_settings SET active_session_page_id=NULL WHERE id=1 AND active_session_page_id=?",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
     Ok(())
+}
+
+pub async fn active_session(pool: &SqlitePool) -> Result<Option<Page>, AppError> {
+    Ok(sqlx::query_as(
+        "SELECT p.* FROM wiki_settings s JOIN pages p ON p.id=s.active_session_page_id WHERE s.id=1 AND p.archived_at IS NULL AND p.content_type='session_notes'",
+    )
+    .fetch_optional(pool)
+    .await?)
+}
+
+pub async fn set_active_session(pool: &SqlitePool, page_id: i64) -> Result<Page, AppError> {
+    let page = get_page_by_id(pool, page_id).await?;
+    if page.archived_at.is_some() || page.content_type != "session_notes" {
+        return Err(AppError::Validation(
+            "Only an active Session Notes page can become the current session.".into(),
+        ));
+    }
+    sqlx::query("UPDATE wiki_settings SET active_session_page_id=? WHERE id=1")
+        .bind(page_id)
+        .execute(pool)
+        .await?;
+    Ok(page)
+}
+
+pub async fn append_session_note(pool: &SqlitePool, note: &str) -> Result<Page, AppError> {
+    let note = note.trim();
+    if note.is_empty() {
+        return Err(AppError::Validation(
+            "Write a note before adding it.".into(),
+        ));
+    }
+    if note.len() > 10_000 {
+        return Err(AppError::Validation(
+            "Quick notes must be 10,000 characters or fewer.".into(),
+        ));
+    }
+    let page = active_session(pool).await?.ok_or_else(|| {
+        AppError::Validation("Choose an active session before adding notes.".into())
+    })?;
+    let timestamp = now();
+    let escaped = html_escape::encode_text(note)
+        .replace("\r\n", "\n")
+        .replace('\n', "<br>");
+    let entry = format!(
+        r#"<section class="session-note" data-created-at="{timestamp}"><p class="session-note-meta"><strong>Field note</strong> · <time data-unix="{timestamp}">{timestamp}</time></p><p>{escaped}</p></section>"#
+    );
+    let body_html = format!("{}{}", page.body_html, entry);
+    update_page(
+        pool,
+        page.id,
+        &PageForm {
+            title: page.title,
+            slug: page.slug,
+            body_html,
+            content_type: page.content_type,
+            is_gm_secret: page.is_gm_secret,
+            edit_summary: "Quick note added".into(),
+        },
+    )
+    .await
 }
 pub async fn restore_archive(pool: &SqlitePool, id: i64) -> Result<Page, AppError> {
     let result = sqlx::query(

@@ -32,6 +32,8 @@ The page editor has synchronized visual and raw-HTML modes. Type `[[Page Title]]
 
 Every save creates an immutable revision. Archiving removes a page from normal lists, search, and wiki-link resolution while preserving its history. Restore archived pages from **Archive**, or inspect and restore revisions through **History**.
 
+Designate any Session Notes dossier as the active session to turn the dashboard into a live command desk. It renders the session brief, gathers outgoing wiki links by content type, and accepts timestamped quick notes that create normal revisions. Dossier pages show backlinks, while **Link Health** reports unresolved wiki links. The editor keeps expiring browser-local drafts and offers recovery after an accidental reload or closed tab.
+
 ## Test and quality checks
 
 ```powershell

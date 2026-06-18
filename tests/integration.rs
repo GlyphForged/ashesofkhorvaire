@@ -27,6 +27,17 @@ fn form(title: &str, body: &str) -> PageForm {
     }
 }
 
+fn session_form(title: &str, body: &str) -> PageForm {
+    PageForm {
+        title: title.into(),
+        slug: String::new(),
+        body_html: body.into(),
+        content_type: "session_notes".into(),
+        is_gm_secret: false,
+        edit_summary: String::new(),
+    }
+}
+
 #[tokio::test]
 async fn seeds_are_idempotent_and_searchable() {
     let (_dir, pool) = test_pool().await;
@@ -157,4 +168,92 @@ async fn health_route_checks_the_database() {
         .await
         .unwrap();
     assert_eq!(response.status(), StatusCode::NO_CONTENT);
+}
+
+#[tokio::test]
+async fn active_session_replaces_clears_and_records_quick_notes() {
+    let (_dir, pool) = test_pool().await;
+    let first = db::create_page(&pool, &session_form("Session One", "<p>Opening</p>"))
+        .await
+        .unwrap();
+    let second = db::create_page(
+        &pool,
+        &session_form("Session Two", "<p>Meet [[Fort Dawn]]</p>"),
+    )
+    .await
+    .unwrap();
+
+    db::set_active_session(&pool, first.id).await.unwrap();
+    assert_eq!(
+        db::active_session(&pool).await.unwrap().unwrap().id,
+        first.id
+    );
+    db::set_active_session(&pool, second.id).await.unwrap();
+    assert_eq!(
+        db::active_session(&pool).await.unwrap().unwrap().id,
+        second.id
+    );
+
+    let updated =
+        db::append_session_note(&pool, "Ambush <script>alert(1)</script>\nPatrol escaped")
+            .await
+            .unwrap();
+    assert!(updated.body_html.contains("&lt;script&gt;"));
+    assert!(updated.body_html.contains("<br>Patrol escaped"));
+    let revisions = db::revisions(&pool, second.id).await.unwrap();
+    assert_eq!(revisions[0].edit_summary, "Quick note added");
+
+    db::archive(&pool, second.id).await.unwrap();
+    assert!(db::active_session(&pool).await.unwrap().is_none());
+    let fort = db::get_page(&pool, "fort-dawn").await.unwrap().unwrap();
+    assert!(db::set_active_session(&pool, fort.id).await.is_err());
+}
+
+#[tokio::test]
+async fn retyping_active_session_clears_the_setting() {
+    let (_dir, pool) = test_pool().await;
+    let session = db::create_page(&pool, &session_form("Retyped Session", "<p>Notes</p>"))
+        .await
+        .unwrap();
+    db::set_active_session(&pool, session.id).await.unwrap();
+    db::update_page(
+        &pool,
+        session.id,
+        &form("Retyped Session", "<p>Now a place</p>"),
+    )
+    .await
+    .unwrap();
+    assert!(db::active_session(&pool).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn link_analysis_drives_session_links_backlinks_and_diagnostics() {
+    let (_dir, pool) = test_pool().await;
+    let source = db::create_page(
+        &pool,
+        &session_form(
+            "Linked Session",
+            "<p>Visit [[Fort Dawn]], then [[Unwritten Vault]].</p><code>[[Ignored Link]]</code>",
+        ),
+    )
+    .await
+    .unwrap();
+
+    let linked = render::linked_pages(&pool, &source.body_html)
+        .await
+        .unwrap();
+    assert_eq!(
+        linked.iter().map(|p| p.title.as_str()).collect::<Vec<_>>(),
+        vec!["Fort Dawn"]
+    );
+    let fort = db::get_page(&pool, "fort-dawn").await.unwrap().unwrap();
+    let backlinks = render::backlinks(&pool, &fort).await.unwrap();
+    assert!(backlinks.iter().any(|page| page.id == source.id));
+    let broken = render::broken_links(&pool).await.unwrap();
+    let vault = broken
+        .iter()
+        .find(|link| link.title == "Unwritten Vault")
+        .unwrap();
+    assert!(vault.sources.iter().any(|page| page.id == source.id));
+    assert!(!broken.iter().any(|link| link.title == "Ignored Link"));
 }
