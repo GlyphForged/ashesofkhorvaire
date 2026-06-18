@@ -54,6 +54,23 @@ Re-run the build and installer to deploy a new version. Existing environment con
 
 For LAN-only access, keep the app on `127.0.0.1` and use a reverse proxy, VPN, or SSH tunnel. Do not change it to `0.0.0.0` unless the network is trusted and firewalled.
 
+### Pi-hole and Lighttpd on DietPi
+
+When the DietPi host already provides Pi-hole DNS and Lighttpd, a split-DNS name can proxy to the local-only service without disturbing Lighttpd's default site:
+
+```sh
+pihole-FTL --config dns.hosts '[ "192.168.86.199 pi.hole", "192.168.86.199 aok.glyphforged.com" ]'
+pihole reloaddns
+
+lighty-enable-mod proxy
+install -m 0644 deploy/lighttpd-aok.conf /etc/lighttpd/conf-available/99-ashes-wiki.conf
+ln -sfn /etc/lighttpd/conf-available/99-ashes-wiki.conf /etc/lighttpd/conf-enabled/99-ashes-wiki.conf
+lighttpd -tt -f /etc/lighttpd/lighttpd.conf
+systemctl reload lighttpd
+```
+
+Keep `BIND_ADDRESS=127.0.0.1:3000` in `/etc/ashes-wiki/ashes-wiki.env`. Clients using the Pi-hole resolver can then open `http://aok.glyphforged.com`. This name is private DNS only; it does not make the wiki publicly accessible.
+
 For a public domain, install Caddy and copy `deploy/Caddyfile.example` into your Caddy configuration. Replace the domain and generate a password hash with `caddy hash-password`. Caddy terminates HTTPS and protects the entire wiki with HTTP basic authentication before proxying to the local app.
 
 The application itself still has no user accounts or authorization. A `GM SECRET` badge is not security, so never publish the app without proxy authentication or a private VPN such as Tailscale/WireGuard.
