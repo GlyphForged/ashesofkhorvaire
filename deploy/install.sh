@@ -40,7 +40,8 @@ install -o root -g root -m 0644 "$SOURCE_DIR/deploy/ashes-wiki.service" /etc/sys
 install -o root -g root -m 0755 "$SOURCE_DIR/deploy/backup.sh" /usr/local/sbin/ashes-wiki-backup
 
 systemctl daemon-reload
-systemctl enable --now ashes-wiki.service
+systemctl enable ashes-wiki.service
+systemctl restart ashes-wiki.service
 systemctl --no-pager --full status ashes-wiki.service
 
 echo "Ashes Wiki is listening locally on 127.0.0.1:3000. Configure Caddy before exposing it."
