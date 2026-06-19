@@ -5,6 +5,10 @@ ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 PACK=${ASHES_CONTENT_PACK:-$ROOT/content/campaign.json}
 FORCE=
 
+# Small ARM boards can exhaust RAM and swap when Rust links several targets in parallel.
+CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-1}
+export CARGO_BUILD_JOBS
+
 if [ "${1:-}" = "--force" ]; then
   FORCE=--force
 elif [ "$#" -gt 0 ]; then
