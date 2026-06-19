@@ -1,4 +1,10 @@
-use ashes_wiki::{AppState, create_pool, db, initialize, models::PageForm, render, router};
+use ashes_wiki::{
+    AppState,
+    content::{self, ContentPack, ContentPage},
+    create_pool, db, initialize,
+    models::PageForm,
+    render, router,
+};
 use axum::{
     body::Body,
     http::{Request, StatusCode},
@@ -256,4 +262,75 @@ async fn link_analysis_drives_session_links_backlinks_and_diagnostics() {
         .unwrap();
     assert!(vault.sources.iter().any(|page| page.id == source.id));
     assert!(!broken.iter().any(|link| link.title == "Ignored Link"));
+}
+
+#[tokio::test]
+async fn content_packs_are_idempotent_detect_conflicts_and_preserve_local_pages() {
+    let (_dir, pool) = test_pool().await;
+    let local = db::create_page(
+        &pool,
+        &session_form("Pi-only Session", "<p>Do not overwrite me.</p>"),
+    )
+    .await
+    .unwrap();
+    let mut pack = ContentPack {
+        format: content::CONTENT_PACK_FORMAT,
+        pack: "test-campaign".into(),
+        pages: vec![ContentPage {
+            title: "Managed Person".into(),
+            slug: "managed-person".into(),
+            body_html: "<p>First version</p>".into(),
+            content_type: "npcs".into(),
+            is_gm_secret: false,
+        }],
+    };
+
+    let first = content::apply_pack(&pool, &pack, false).await.unwrap();
+    assert_eq!(first.created, 1);
+    let managed = db::get_page(&pool, "managed-person")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(db::revisions(&pool, managed.id).await.unwrap().len(), 1);
+
+    let second = content::apply_pack(&pool, &pack, false).await.unwrap();
+    assert_eq!(second.unchanged, 1);
+    assert_eq!(db::revisions(&pool, managed.id).await.unwrap().len(), 1);
+
+    db::update_page(
+        &pool,
+        managed.id,
+        &PageForm {
+            title: managed.title.clone(),
+            slug: managed.slug.clone(),
+            body_html: "<p>Edited directly on the Pi</p>".into(),
+            content_type: managed.content_type.clone(),
+            is_gm_secret: managed.is_gm_secret,
+            edit_summary: "Local edit".into(),
+        },
+    )
+    .await
+    .unwrap();
+    pack.pages[0].body_html = "<p>Second version</p>".into();
+
+    let conflict = content::apply_pack(&pool, &pack, false)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(conflict.contains("managed-person has local changes"));
+    assert_eq!(
+        db::get_page(&pool, "managed-person")
+            .await
+            .unwrap()
+            .unwrap()
+            .body_html,
+        "<p>Edited directly on the Pi</p>"
+    );
+
+    let forced = content::apply_pack(&pool, &pack, true).await.unwrap();
+    assert_eq!(forced.updated, 1);
+    assert_eq!(
+        db::get_page_by_id(&pool, local.id).await.unwrap().body_html,
+        "<p>Do not overwrite me.</p>"
+    );
 }

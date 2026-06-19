@@ -32,6 +32,21 @@ The page editor has synchronized visual and raw-HTML modes. Type `[[Page Title]]
 
 Every save creates an immutable revision. Archiving removes a page from normal lists, search, and wiki-link resolution while preserving its history. Restore archived pages from **Archive**, or inspect and restore revisions through **History**.
 
+## Versioned campaign content
+
+The SQLite database remains the live editing workspace. Campaign dossiers intended for every installation are exported to the Git-tracked content pack at `content/campaign.json`. Session Notes are deliberately excluded.
+
+After editing lore locally, refresh the pack:
+
+```powershell
+cargo run --bin ashes-content -- export content/campaign.json --pack campaign
+cargo run --bin ashes-content -- check content/campaign.json
+```
+
+Review and commit the JSON file with the related code changes. The pack contains GM-secret pages, so keep the repository private.
+
+Applying a pack creates normal page revisions and never deletes pages absent from the pack. It records a fingerprint for each managed page. A later direct edit on the destination causes a conflict instead of being overwritten. Use `--force` only after reviewing that edit.
+
 Designate any Session Notes dossier as the active session to turn the dashboard into a live command desk. It renders the session brief, gathers outgoing wiki links by content type, and accepts timestamped quick notes that create normal revisions. Dossier pages show backlinks, while **Link Health** reports unresolved wiki links. The editor keeps expiring browser-local drafts and offers recovery after an accidental reload or closed tab.
 
 ## Test and quality checks

@@ -28,6 +28,8 @@ dependencies = [
  "once_cell",
  "regex",
  "serde",
+ "serde_json",
+ "sha2",
  "slug",
  "sqlx",
  "tempfile",

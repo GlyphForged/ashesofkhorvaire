@@ -50,6 +50,37 @@ sudo journalctl -u ashes-wiki -f
 
 Re-run the build and installer to deploy a new version. Existing environment configuration and database contents are preserved.
 
+## Update application and campaign content
+
+Campaign lore is stored in `content/campaign.json` so a Git pull can promote it without replacing the Pi's entire database. The updater leaves Pi-only pages and Session Notes alone. Managed pages receive ordinary wiki revisions.
+
+The first content-pack deployment adopts existing pages explicitly:
+
+```sh
+git pull
+sh ./deploy/update-pi.sh --force
+```
+
+Review the first run carefully. Later deployments use the guarded path:
+
+```sh
+git pull
+sh ./deploy/update-pi.sh
+```
+
+The helper performs the following operations:
+
+1. Runs the Rust test suite and builds release binaries.
+2. Creates an online SQLite backup.
+3. Stops the wiki service.
+4. Installs the application and content updater.
+5. Applies the pack as the `ashes-wiki` service user.
+6. Restarts the service and verifies `/healthz`.
+
+If a managed page was edited directly on the Pi, the update stops and identifies the conflicting slug. The backup remains available and the service restarts automatically. Preserve the Pi edit by bringing it into the local wiki and exporting a new pack. Pass `--force` only when the Git version should intentionally replace it.
+
+The content pack contains GM-secret dossiers. Keep the Git repository private.
+
 ## 4. Choose network exposure
 
 For LAN-only access, keep the app on `127.0.0.1` and use a reverse proxy, VPN, or SSH tunnel. Do not change it to `0.0.0.0` unless the network is trusted and firewalled.
